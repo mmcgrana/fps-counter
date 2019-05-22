@@ -78,10 +78,6 @@ public class FPSCounter: NSObject {
     /// The delegate that should receive FPS updates.
     public weak var delegate: FPSCounterDelegate?
 
-    /// Delay between FPS updates. Longer delays mean more averaged FPS numbers.
-    @objc public var notificationDelay: TimeInterval = 1.0
-
-
     // MARK: - Tracking
 
     private var runloop: RunLoop?
@@ -122,29 +118,27 @@ public class FPSCounter: NSObject {
 
     // MARK: - Handling Frame Updates
 
-    private var lastNotificationTime: CFAbsoluteTime = 0.0
-    private var numberOfFrames = 0
+    private var frameTimes: [CFAbsoluteTime] = Array(repeating: 0.0, count: 120)
+    private var frameIndex: Int = 0
 
+    // Generate a rolling FPS update every frame. To do this, keep the times of
+    // the last 120 frames. Then every frame, see how many frames have landed in
+    // the last second. If the app is at max frame rate, this will be 120,
+    // otherwise it will be less. When the app is booting and we don't yet have
+    // 120 frames of data, count those missing frames in favor of the app.
     private func updateFromDisplayLink(_ displayLink: CADisplayLink) {
-        if self.lastNotificationTime == 0.0 {
-            self.lastNotificationTime = CFAbsoluteTimeGetCurrent()
-            return
+        let currentTime =  CFAbsoluteTimeGetCurrent()
+        let oneSecAgo = currentTime - 1.0
+
+        self.frameTimes[self.frameIndex] = currentTime
+        self.frameIndex = (self.frameIndex + 1) % 120
+
+        var fps = 0
+        for frameTime in self.frameTimes {
+            if frameTime >= oneSecAgo || frameTime == 0.0 {
+                fps += 1
+            }
         }
-
-        self.numberOfFrames += 1
-
-        let currentTime = CFAbsoluteTimeGetCurrent()
-        let elapsedTime = currentTime - self.lastNotificationTime
-
-        if elapsedTime >= self.notificationDelay {
-            self.notifyUpdateForElapsedTime(elapsedTime)
-            self.lastNotificationTime = 0.0
-            self.numberOfFrames = 0
-        }
-    }
-
-    private func notifyUpdateForElapsedTime(_ elapsedTime: CFAbsoluteTime) {
-        let fps = Int(round(Double(self.numberOfFrames) / elapsedTime))
         self.delegate?.fpsCounter(self, didUpdateFramesPerSecond: fps)
     }
 }
